@@ -40,7 +40,7 @@ layers:
     name: live_signal_engine
     parent_id: null
     properties: {}
-    status: 3
+    status: 1
     type: 1
     variables: null
     width: 1600
@@ -58,7 +58,7 @@ layers:
     name: load_futures_candles
     parent_id: null
     properties: {}
-    status: 1
+    status: 3
     type: 1
     variables: null
     width: 1600
@@ -126,7 +126,7 @@ layers:
     name: train_gru_classifiers
     parent_id: null
     properties: {}
-    status: 3
+    status: 4
     type: 1
     variables: null
     width: 1600
