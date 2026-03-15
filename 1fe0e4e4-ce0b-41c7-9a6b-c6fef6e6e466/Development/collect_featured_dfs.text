@@ -1,0 +1,39 @@
+
+import pandas as pd
+
+# ── Aggregate Fleet results into a dict keyed by coin symbol ─────────────────
+# In the Aggregator, `featured_df` is a list of 8 DataFrames (one per Fleet slice)
+# and `featured_symbol` is a list of 8 symbol strings.
+
+featured_dfs = {sym: df for sym, df in zip(featured_symbol, featured_df)}
+
+# ── Validation report ─────────────────────────────────────────────────────────
+expected_feature_cols = [
+    "rsi_14", "ema_9", "ema_21",
+    "macd_line", "macd_signal", "macd_histogram",
+    "bb_upper", "bb_lower", "bb_width", "bb_pct_b",
+    "vol_sma_20", "vol_delta",
+    "body_size_norm", "roc_5",
+    "label_threshold",   # per-coin threshold stored in compute_features
+]
+
+print("=" * 70)
+print("  FEATURE ENGINEERING SUMMARY  (all 8 coins)")
+print("=" * 70)
+
+all_ok = True
+for sym in ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "NEIRO", "ZEREBRO"]:
+    _df = featured_dfs[sym]
+    _nans = _df.isna().sum().sum()
+    _missing = [c for c in expected_feature_cols if c not in _df.columns]
+    _thresh = _df["label_threshold"].iloc[0] if "label_threshold" in _df.columns else "?"
+    _status = "✅" if _nans == 0 and not _missing else "❌"
+    if _nans > 0 or _missing:
+        all_ok = False
+    print(f"  {_status}  {sym:<8}  rows={len(_df):>8,}  cols={_df.shape[1]:2d}  "
+          f"nans={_nans}  threshold=±{_thresh}%  missing={_missing or 'none'}")
+
+print("=" * 70)
+print(f"  {'ALL COINS PASS ✅' if all_ok else 'SOME CHECKS FAILED ❌'}")
+print(f"  Feature columns ({len(expected_feature_cols)}): {expected_feature_cols}")
+print("=" * 70)
