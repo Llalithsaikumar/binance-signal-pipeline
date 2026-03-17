@@ -1,6 +1,4 @@
-
-# ── Write the complete standalone main.py to the canvas filesystem ────────────
-MAIN_PY = '''#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 main.py — Unified Crypto Futures Trading Pipeline
 =================================================
@@ -195,7 +193,7 @@ def fetch_klines(symbol: str, start_ms: int, now_ms: int) -> pd.DataFrame:
 
 def load_all_candles(coin_config: dict, now_ms: int) -> dict:
     """Fetch OHLCV for every coin in parallel. Returns {coin: DataFrame}."""
-    print("\\n[1/7] Loading Binance Futures candles (parallel)…")
+    print("\n[1/7] Loading Binance Futures candles (parallel)…")
     raw_dfs = {}
 
     def _fetch(coin, cfg):
@@ -286,7 +284,7 @@ def add_ppo_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_all_features(raw_dfs: dict, coin_config: dict) -> tuple:
     """Run full feature engineering. Returns (mlp_data, ppo_matrices)."""
-    print("\\n[2/7] Feature engineering…")
+    print("\n[2/7] Feature engineering…")
     mlp_data     = {}   # coin → labeled DataFrame with MLP features
     ppo_matrices = {}   # coin → DataFrame with PPO features
 
@@ -348,7 +346,7 @@ def precision_recall(y_true, y_pred, n_classes=3):
 
 def train_mlp_models(mlp_data: dict, coin_config: dict) -> tuple:
     """Train one MLPClassifier per coin. Returns (models, metrics)."""
-    print("\\n[3/7] Training MLP classifiers…")
+    print("\n[3/7] Training MLP classifiers…")
     models  = {}
     metrics = {}
 
@@ -410,11 +408,11 @@ def run_mlp_inference(mlp_data: dict, models: dict,
                       coin_config: dict, output_dir: str) -> list:
     """
     Run MLP inference over the held-out test set for each coin.
-    Uses the most recent SEQ_LEN rows of each coin\'s feature data as
-    a single \'live\' snapshot — mirrors the live_signal_engine logic.
+    Uses the most recent SEQ_LEN rows of each coin's feature data as
+    a single 'live' snapshot — mirrors the live_signal_engine logic.
     Returns signals_list and writes signals_log.csv.
     """
-    print("\\n[5/7] MLP inference & signal generation…")
+    print("\n[5/7] MLP inference & signal generation…")
     signals = []
 
     for coin, df in mlp_data.items():
@@ -672,8 +670,8 @@ class PPOAgent:
     def train(self, env, total_timesteps: int) -> list:
         log, obs, _ = [], np.array(env.reset(seed=42)[0], dtype=np.float64), None
         ep_rewards, ep_cur, steps = [], 0.0, 0
-        print(f"    {\'Timestep\':>10}  {\'MeanEpReward\':>14}  {\'Episodes\':>9}")
-        print(f"    {\'─\' * 40}")
+        print(f"    {'Timestep':>10}  {'MeanEpReward':>14}  {'Episodes':>9}")
+        print(f"    {'─' * 40}")
         while steps < total_timesteps:
             n  = self.n_steps
             ob = np.zeros((n, obs.shape[0]))
@@ -716,7 +714,7 @@ def train_ppo_agent(ppo_matrices: dict, coin: str = "BTC",
                     total_timesteps: int = 100_000,
                     transaction_cost: float = 0.001) -> tuple:
     """Train PPO on the specified coin. Returns (agent, reward_log)."""
-    print(f"\\n[4/7] Training PPO agent on {coin} ({total_timesteps:,} timesteps)…")
+    print(f"\n[4/7] Training PPO agent on {coin} ({total_timesteps:,} timesteps)…")
 
     required = PPO_FEATURE_COLS + ["ppo_action"]
     mat = (ppo_matrices[coin][required].dropna().reset_index(drop=True))
@@ -747,7 +745,7 @@ def train_ppo_agent(ppo_matrices: dict, coin: str = "BTC",
 def backtest_ppo(agent: PPOAgent, test_df: pd.DataFrame,
                  coin: str = "BTC", transaction_cost: float = 0.001) -> dict:
     """Run the trained PPO agent over the test set. Returns metrics dict."""
-    print(f"\\n[6/7] Backtesting PPO agent on {coin} test set…")
+    print(f"\n[6/7] Backtesting PPO agent on {coin} test set…")
     env   = TradingEnv(df=test_df, transaction_cost=transaction_cost, coin=coin)
     obs, _ = env.reset(seed=0)
     obs    = np.array(obs, dtype=np.float64)
@@ -785,12 +783,12 @@ def backtest_ppo(agent: PPOAgent, test_df: pd.DataFrame,
         "actions":        actions,
     }
 
-    print(f"  Total Return  : {metrics[\'total_return\']:>+.6f}")
-    print(f"  B&H  Return   : {metrics[\'bnh_return\']:>+.6f}")
-    print(f"  Sharpe Ratio  : {metrics[\'sharpe\']:>+.4f}")
-    print(f"  Win Rate      : {metrics[\'win_rate\']*100:.2f}%")
+    print(f"  Total Return  : {metrics['total_return']:>+.6f}")
+    print(f"  B&H  Return   : {metrics['bnh_return']:>+.6f}")
+    print(f"  Sharpe Ratio  : {metrics['sharpe']:>+.4f}")
+    print(f"  Win Rate      : {metrics['win_rate']*100:.2f}%")
     print(f"  SELL/HOLD/BUY : "
-          f"{metrics[\'action_counts\'][\'SELL\']}/{metrics[\'action_counts\'][\'HOLD\']}/{metrics[\'action_counts\'][\'BUY\']}")
+          f"{metrics['action_counts']['SELL']}/{metrics['action_counts']['HOLD']}/{metrics['action_counts']['BUY']}")
     return metrics
 
 
@@ -811,7 +809,7 @@ def _apply_zerve_style():
 
 def save_charts(bt_metrics: dict, reward_log: list, output_dir: str):
     """Generate and save the three standard PPO output charts."""
-    print(f"\\n[7/7] Saving charts to {output_dir}…")
+    print(f"\n[7/7] Saving charts to {output_dir}…")
     _apply_zerve_style()
 
     coin     = bt_metrics["coin"]
@@ -865,9 +863,9 @@ def save_charts(bt_metrics: dict, reward_log: list, output_dir: str):
     fig3, ax3 = plt.subplots(figsize=(7, 7))
     ax3.pie(
         ac,
-        labels=[f"SELL\\n{ac[0]:,} ({ac[0]/nt*100:.1f}%)",
-                f"HOLD\\n{ac[1]:,} ({ac[1]/nt*100:.1f}%)",
-                f"BUY\\n{ac[2]:,} ({ac[2]/nt*100:.1f}%)"],
+        labels=[f"SELL\n{ac[0]:,} ({ac[0]/nt*100:.1f}%)",
+                f"HOLD\n{ac[1]:,} ({ac[1]/nt*100:.1f}%)",
+                f"BUY\n{ac[2]:,} ({ac[2]/nt*100:.1f}%)"],
         colors=[RED, MUTED_COLOR, GREEN],
         explode=[0.04, 0.04, 0.04], startangle=90,
         textprops={"color": TEXT_COLOR, "fontsize": 12, "fontweight": "bold"},
@@ -940,33 +938,33 @@ def main():
             bt_metrics = backtest_ppo(ppo_agent, test_df, coin=coins[0])
             save_charts(bt_metrics, reward_log, args.output_dir)
         else:
-            print("\\n[6-7/7] Skipping PPO backtest & charts — no trained agent in \'run\' mode.")
+            print("\n[6-7/7] Skipping PPO backtest & charts — no trained agent in 'run' mode.")
             print("        Re-run with --mode both to train and evaluate.")
 
     # ── FINAL SUMMARY ────────────────────────────────────────────────────────
-    print("\\n" + "=" * 72)
+    print("\n" + "=" * 72)
     print("  ✅  PIPELINE COMPLETE")
     print("=" * 72)
 
     if mlp_metrics:
-        print("\\n  MLP Classifier Results:")
-        print(f"  {\'COIN\':<10} {\'ACCURACY\':>9} {\'DOWN_P\':>8} {\'UP_P\':>8} {\'N_ITER\':>7}")
-        print(f"  {\'-\'*50}")
+        print("\n  MLP Classifier Results:")
+        print(f"  {'COIN':<10} {'ACCURACY':>9} {'DOWN_P':>8} {'UP_P':>8} {'N_ITER':>7}")
+        print(f"  {'-'*50}")
         for c, m in mlp_metrics.items():
-            print(f"  {c:<10} {m[\'accuracy\']:>9.4f} {m[\'precision\'][0]:>8.4f} "
-                  f"{m[\'precision\'][2]:>8.4f} {m[\'n_iter\']:>7}")
+            print(f"  {c:<10} {m['accuracy']:>9.4f} {m['precision'][0]:>8.4f} "
+                  f"{m['precision'][2]:>8.4f} {m['n_iter']:>7}")
 
     if bt_metrics:
-        print("\\n  PPO Backtest Results:")
-        print(f"  Coin          : {bt_metrics[\'coin\']}")
-        print(f"  Total Return  : {bt_metrics[\'total_return\']:>+.6f}")
-        print(f"  B&H  Return   : {bt_metrics[\'bnh_return\']:>+.6f}")
-        print(f"  Sharpe Ratio  : {bt_metrics[\'sharpe\']:>+.4f}")
-        print(f"  Win Rate      : {bt_metrics[\'win_rate\']*100:.2f}%")
+        print("\n  PPO Backtest Results:")
+        print(f"  Coin          : {bt_metrics['coin']}")
+        print(f"  Total Return  : {bt_metrics['total_return']:>+.6f}")
+        print(f"  B&H  Return   : {bt_metrics['bnh_return']:>+.6f}")
+        print(f"  Sharpe Ratio  : {bt_metrics['sharpe']:>+.4f}")
+        print(f"  Win Rate      : {bt_metrics['win_rate']*100:.2f}%")
         ac = bt_metrics["action_counts"]
-        print(f"  SELL/HOLD/BUY : {ac[\'SELL\']}/{ac[\'HOLD\']}/{ac[\'BUY\']}")
+        print(f"  SELL/HOLD/BUY : {ac['SELL']}/{ac['HOLD']}/{ac['BUY']}")
 
-    print(f"\\n  Output files in \'{args.output_dir}\':")
+    print(f"\n  Output files in '{args.output_dir}':")
     for fn in ["signals_log.csv", "ppo_cumulative_return.png",
                "ppo_training_curve.png", "ppo_action_distribution.png"]:
         fp = os.path.join(args.output_dir, fn)
@@ -981,20 +979,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
-
-# Write to canvas filesystem
-with open("main.py", "w") as f:
-    f.write(MAIN_PY)
-
-import os
-_size = os.path.getsize("main.py")
-print(f"✅  main.py written successfully")
-print(f"    Size: {_size:,} bytes  ({_size // 1024} KB)")
-print(f"    Path: main.py (canvas filesystem current working directory)")
-print()
-print("Run with:")
-print("  python main.py --mode both")
-print("  python main.py --mode train --coins BTC ETH SOL --episodes 50000")
-print("  python main.py --mode run")
-print("  python main.py --mode both --output-dir /tmp/out")

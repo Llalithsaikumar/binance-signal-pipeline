@@ -270,9 +270,34 @@ After a full `--mode both` run, the following files are written to `--output-dir
 
 ## 📁 File Descriptions
 
+### Current Folder Layout
+
+```text
+Development/
+├── main.py
+├── alerts/
+│   └── send_telegram_alerts.py
+├── data/
+│   ├── fan_out_coins.py
+│   └── load_futures_candles.py
+├── features/
+│   ├── build_ppo_feature_matrix.py
+│   ├── collect_featured_dfs.text
+│   └── compute_features.py
+├── labels/
+│   └── label_targets.py
+├── live/
+│   └── live_signal_engine.py
+├── rl/
+│   └── trading_gym_env.py
+└── train/
+  ├── train_mlp_classifiers.py
+  └── train_ppo_agent.py
+```
+
 | File | Description |
 |---|---|
-| `main.py` | Standalone CLI script — complete pipeline (MLP + PPO) without Zerve. Written by `write_main_py` block. |
+| `main.py` | Standalone CLI script — complete pipeline (MLP + PPO) without Zerve. |
 | `signals_log.csv` | Live signal log written by `live_signal_engine`. Columns: `timestamp`, `coin`, `signal`, `confidence`, `price`, `volatility_warning`, `atr_14`. Reset on each run. Also read by `build_ppo_feature_matrix` to seed PPO features. |
 | `ppo_cumulative_return.png` | Chart comparing PPO agent cumulative log-return vs Buy-and-Hold on the BTC 20% test set. |
 | `ppo_training_curve.png` | PPO training reward curve over 100K timesteps — mean episode reward (trailing 20 eps) with a moving-average trend line. |
@@ -317,7 +342,7 @@ transaction_cost = 0.1% # applied on each position change
 
 ## 📝 Notes & Known Issues
 
-### ⚠️ `train_gru_classifiers` — Currently Failing
+### ⚠️ `train_mlp_classifiers` — Currently Failing
 The block is currently in a **failed** state (`expected str, bytes or os.PathLike object, not int`). This is a path-handling bug in the RL reward simulation section of the block. The PPO branch (`build_ppo_feature_matrix` → `trading_gym_env` → `ppo_agent_training`) runs independently and is fully functional.
 
 ### 🔄 Re-running the Pipeline
@@ -327,8 +352,8 @@ The block is currently in a **failed** state (`expected str, bytes or os.PathLik
 
 ### 🔧 Extending the Project
 - **Add more coins:** Extend `COIN_CONFIG` in `load_futures_candles` and update the spread list in `fan_out_coins`
-- **Swap MLP for GRU/LSTM:** The `train_gru_classifiers` block is designed to be upgraded — `COIN_CONFIG` stores `dropout` and `l2` for a future PyTorch GRU implementation
-- **Multi-coin PPO:** Currently PPO trains only on BTC. Extend `ppo_agent_training` to loop over `PPO_COINS` using `ppo_feature_matrices`
+- **Swap MLP for GRU/LSTM:** The `train_mlp_classifiers` block is designed to be upgraded — `COIN_CONFIG` stores `dropout` and `l2` for a future PyTorch GRU implementation
+- **Multi-coin PPO:** Currently PPO trains only on BTC. Extend `train_ppo_agent` to loop over `PPO_COINS` using `ppo_feature_matrices`
 - **Scheduled runs:** Wire `load_futures_candles` to a Zerve scheduled job to refresh signals periodically
 - **Deploy as API:** Use a Zerve deployment script with `from zerve import variable` to serve live signals over HTTP
 
