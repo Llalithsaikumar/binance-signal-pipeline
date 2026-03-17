@@ -19,6 +19,25 @@ LIVE_INTERVAL = "1m"
 LIVE_LIMIT    = 80       # fetch 80 candles — enough for all indicators + ATR(14)
 LIVE_SEQ_LEN  = 30       # must match training SEQ_LEN
 NUM_CLASSES   = 3
+TRAIN_LABEL_HORIZON_MIN = 5
+DEFAULT_FORECAST_HORIZON_MIN = 10
+
+def _read_positive_int_env(name: str, default: int) -> int:
+    """Read a positive integer env var, falling back cleanly on bad input."""
+    _raw = os.environ.get(name, "").strip()
+    if not _raw:
+        return default
+    try:
+        _value = int(_raw)
+    except ValueError:
+        print(f"  Warning: {name}={_raw!r} is invalid; using {default}")
+        return default
+    return max(1, _value)
+
+FORECAST_HORIZON_MIN = _read_positive_int_env(
+    "PREDICTION_HORIZON_MINUTES",
+    DEFAULT_FORECAST_HORIZON_MIN,
+)
 
 # Per-coin confidence thresholds from COIN_CONFIG:
 #   Standard coins : 0.65
@@ -33,6 +52,7 @@ LIVE_FEATURE_COLS = [
     "body_size_norm", "roc_5",
 ]
 CLASS_NAMES_LIVE = ["DOWN", "SIDEWAYS", "UP"]
+LABEL_VALUE_BY_SIGNAL = {"DOWN": -1, "SIDEWAYS": 0, "UP": 1}
 LOG_FILE         = "signals_log.csv"
 
 # ── ATR(14) volatility gate — pre-compute historical 90th-percentile ATR ──────
@@ -80,6 +100,88 @@ for _coin in COIN_CONFIG:
         print(f"  {_coin:<8}  no labeled_data → volatility gate disabled")
 
 # ── Pre-compute static lookup ────────────────────────────────────────────────
+def _compute_forward_return_pct(close: pd.Series, horizon: int) -> pd.Series:
+    """Forward return in percent over `horizon` 1-minute bars."""
+    _close_ahead = close.shift(-horizon)
+    return (_close_ahead - close) / close * 100
+
+
+def _build_forecast_stats(df: pd.DataFrame, horizon: int) -> dict:
+    """
+    Build per-signal forward-return statistics for the requested forecast horizon.
+
+    The classifier still predicts the trained class label. The price target is an
+    empirical estimate derived from historical forward returns for rows that
+    carried the same label in `labeled_data`.
+    """
+    _base = df[["close", "label"]].copy()
+    _base["forecast_return_pct"] = _compute_forward_return_pct(_base["close"], horizon)
+    _base = _base.iloc[:-horizon].copy() if len(_base) > horizon else _base.iloc[0:0].copy()
+
+    _stats = {}
+    for _signal, _label_value in LABEL_VALUE_BY_SIGNAL.items():
+        _sample = _base.loc[_base["label"] == _label_value, "forecast_return_pct"].dropna()
+        if _sample.empty:
+            _stats[_signal] = {
+                "support": 0,
+                "median_return_pct": 0.0,
+                "p25_return_pct": 0.0,
+                "p75_return_pct": 0.0,
+            }
+            continue
+
+        _stats[_signal] = {
+            "support": int(len(_sample)),
+            "median_return_pct": float(_sample.median()),
+            "p25_return_pct": float(_sample.quantile(0.25)),
+            "p75_return_pct": float(_sample.quantile(0.75)),
+        }
+    return _stats
+
+
+def _forecast_from_stats(current_price: float, stats: dict) -> dict:
+    """Translate return statistics into a point forecast and a price range."""
+    _median_ret = float(stats["median_return_pct"])
+    _p25_ret    = float(stats["p25_return_pct"])
+    _p75_ret    = float(stats["p75_return_pct"])
+    _target     = current_price * (1.0 + _median_ret / 100.0)
+    _low_price  = current_price * (1.0 + _p25_ret / 100.0)
+    _high_price = current_price * (1.0 + _p75_ret / 100.0)
+
+    return {
+        "forecast_support":    int(stats["support"]),
+        "expected_move_pct":   round(_median_ret, 4),
+        "move_range_low_pct":  round(min(_p25_ret, _p75_ret), 4),
+        "move_range_high_pct": round(max(_p25_ret, _p75_ret), 4),
+        "target_price":        round(_target, 8),
+        "target_price_low":    round(min(_low_price, _high_price), 8),
+        "target_price_high":   round(max(_low_price, _high_price), 8),
+    }
+
+
+print(f"Pre-computing {FORECAST_HORIZON_MIN}-minute forward-return forecast stats ...")
+_forecast_stats = {}
+for _coin in COIN_CONFIG:
+    if _coin in labeled_data:
+        _forecast_stats[_coin] = _build_forecast_stats(labeled_data[_coin], FORECAST_HORIZON_MIN)
+        print(
+            f"  {_coin:<8}  "
+            f"UP={_forecast_stats[_coin]['UP']['support']:>7,}  "
+            f"SIDEWAYS={_forecast_stats[_coin]['SIDEWAYS']['support']:>7,}  "
+            f"DOWN={_forecast_stats[_coin]['DOWN']['support']:>7,}"
+        )
+    else:
+        _forecast_stats[_coin] = {
+            _signal: {
+                "support": 0,
+                "median_return_pct": 0.0,
+                "p25_return_pct": 0.0,
+                "p75_return_pct": 0.0,
+            }
+            for _signal in CLASS_NAMES_LIVE
+        }
+        print(f"  {_coin:<8}  no labeled_data; forecast stats unavailable")
+
 _N_FEATURES = len(LIVE_FEATURE_COLS)
 _FLAT_DIM   = LIVE_SEQ_LEN * _N_FEATURES   # 30 × 14 = 420
 
@@ -210,6 +312,7 @@ print("\n" + "=" * 72)
 print(f"  LIVE SIGNAL ENGINE (per-coin gates)  |  {_timestamp}")
 print(f"  Symbols: {len(LIVE_SYMBOLS)}  |  Confidence thresholds: std=65%  meme=75%")
 print(f"  ATR volatility gate: top {100-ATR_WARN_PCT}% of historical ATR → warning tag")
+print(f"  Forecast horizon: {FORECAST_HORIZON_MIN} minute(s)  |  Training label horizon: {TRAIN_LABEL_HORIZON_MIN} minute(s)")
 print("=" * 72)
 
 # ── STEP 1: Parallel HTTP fetches + feature engineering ──────────────────────
@@ -294,6 +397,15 @@ for _i, _coin in enumerate(_valid_coins):
     _class_idx  = int(np.argmax(_prob_full))
     _confidence = float(_prob_full[_class_idx])
     _signal     = CLASS_NAMES_LIVE[_class_idx]
+    _forecast   = _forecast_from_stats(
+        _prices[_coin],
+        _forecast_stats.get(_coin, {}).get(_signal, {
+            "support": 0,
+            "median_return_pct": 0.0,
+            "p25_return_pct": 0.0,
+            "p75_return_pct": 0.0,
+        }),
+    )
 
     # Per-coin confidence threshold from COIN_CONFIG
     _conf_thresh = LIVE_CONF_THRESHOLD[_coin]
@@ -304,6 +416,7 @@ for _i, _coin in enumerate(_valid_coins):
 
     _all_results.append({
         "coin":               _coin,
+        "symbol":             LIVE_SYMBOLS[_coin],
         "signal":             _signal,
         "confidence":         round(_confidence, 4),
         "price":              _prices[_coin],
@@ -313,6 +426,8 @@ for _i, _coin in enumerate(_valid_coins):
         "atr_14":             round(_live_atrs[_coin], 6),
         "atr_p90":            round(_hist_atr_p90.get(_coin, 0.0), 6),
         "volatility_warning": _vol_warnings[_coin],
+        "forecast_horizon_min": FORECAST_HORIZON_MIN,
+        **_forecast,
         "prob_full":          _prob_full,
     })
 
@@ -325,14 +440,24 @@ for _r in _all_results:
     if _r["emitted"]:
         signals_list.append({
             k: _r[k]
-            for k in ("coin", "signal", "confidence", "price", "timestamp",
-                      "volatility_warning", "atr_14", "atr_p90", "conf_threshold")
+            for k in (
+                "coin", "symbol", "signal", "confidence", "price", "timestamp",
+                "volatility_warning", "atr_14", "atr_p90", "conf_threshold",
+                "forecast_horizon_min", "forecast_support",
+                "expected_move_pct", "move_range_low_pct", "move_range_high_pct",
+                "target_price", "target_price_low", "target_price_high",
+            )
         })
 
 # ── STEP 5: CSV logging — reset log file to match new 7-col schema ─────────────
 # The schema expanded with volatility_warning and atr_14; reset file to avoid
 # column-count mismatch when reading old 5-column entries.
-_csv_cols = ["timestamp", "coin", "signal", "confidence", "price", "volatility_warning", "atr_14"]
+_csv_cols = [
+    "timestamp", "coin", "signal", "confidence", "price",
+    "forecast_horizon_min", "expected_move_pct",
+    "target_price", "target_price_low", "target_price_high",
+    "volatility_warning", "atr_14",
+]
 with open(LOG_FILE, "w", newline="") as _f:     # "w" → always write fresh header
     _writer = csv.DictWriter(_f, fieldnames=_csv_cols)
     _writer.writeheader()
@@ -342,15 +467,15 @@ with open(LOG_FILE, "w", newline="") as _f:     # "w" → always write fresh hea
 # ── STEP 6: Print detailed results ─────────────────────────────────────────────
 print(f"\n[3/3] Per-symbol predictions (per-coin confidence gate + ATR volatility gate):")
 print(f"  {'Coin':<7} {'Signal':<9} {'Conf':>7} {'Gate':>6} {'Price':>14}  "
-      f"{'ATR_live':>10} {'ATR_p90':>10} {'Vol?':>5}  Emit?")
-print(f"  {'-'*82}")
+      f"{'Target':>14} {'Move%':>8} {'Vol?':>5}  Emit?")
+print(f"  {'-'*94}")
 
 for _r in _all_results:
     _c     = _r["coin"]
     _vwarn = "⚡ YES" if _r["volatility_warning"] else "  no "
     _flag  = "🚨" if _r["emitted"] else "⏸ "
     print(f"  {_c:<7} {_r['signal']:<9} {_r['confidence']:>6.1%} {_r['conf_threshold']:>6.0%} "
-          f"{_r['price']:>14,.4f}  {_r['atr_14']:>10.6f} {_r['atr_p90']:>10.6f} {_vwarn}  {_flag}")
+          f"{_r['price']:>14,.4f}  {_r['target_price']:>14,.4f} {_r['expected_move_pct']:>+7.3f}% {_vwarn}  {_flag}")
 
 if _skip_reasons:
     print(f"\n  ⚠️  Skipped symbols:")
@@ -370,12 +495,12 @@ print(f"{'='*72}")
 
 print(f"\n  SIGNALS SUMMARY  —  {len(signals_list)}/{len(LIVE_SYMBOLS)} coins emitted a signal")
 if signals_list:
-    print(f"\n  {'Coin':<7} {'Signal':<9} {'Conf':>7} {'Gate':>6} {'Price':>14}  {'Vol?':<8}  Timestamp")
-    print(f"  {'-'*75}")
+    print(f"\n  {'Coin':<7} {'Signal':<9} {'Conf':>7} {'Gate':>6} {'Price':>14}  {'Target':>14} {'Move%':>8}  {'Vol?':<8}  Timestamp")
+    print(f"  {'-'*108}")
     for _s in signals_list:
         _vw = "⚡ WARN" if _s["volatility_warning"] else ""
         print(f"  {_s['coin']:<7} {_s['signal']:<9} {_s['confidence']:>6.1%} {_s['conf_threshold']:>6.0%} "
-              f"{_s['price']:>14,.4f}  {_vw:<8}  {_s['timestamp']}")
+              f"{_s['price']:>14,.4f}  {_s['target_price']:>14,.4f} {_s['expected_move_pct']:>+7.3f}%  {_vw:<8}  {_s['timestamp']}")
 else:
     print("\n  ℹ️  No signals met the per-coin confidence threshold this run.")
 

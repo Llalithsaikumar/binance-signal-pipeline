@@ -27,6 +27,7 @@ import argparse
 import csv
 import json
 import os
+import pickle
 import sys
 import time
 import urllib.parse
@@ -78,6 +79,11 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default=".",
         help="Directory for output files: signals_log.csv, PNG charts (default: .)",
+    )
+    parser.add_argument(
+        "--model-dir",
+        default="./models",
+        help="Directory to save/load trained models for reuse (default: ./models)",
     )
     return parser.parse_args()
 
@@ -392,6 +398,61 @@ def train_mlp_models(mlp_data: dict, coin_config: dict) -> tuple:
               f"DOWN_P={prec[0]:.3f}  UP_P={prec[2]:.3f}")
 
     return models, metrics
+
+
+def _mlp_model_path(model_dir: str, coin: str) -> str:
+    return os.path.join(model_dir, f"mlp_{coin}.pkl")
+
+
+def _ppo_model_path(model_dir: str, coin: str) -> str:
+    return os.path.join(model_dir, f"ppo_{coin}.pkl")
+
+
+def save_mlp_models(models: dict, model_dir: str) -> None:
+    os.makedirs(model_dir, exist_ok=True)
+    for coin, model in models.items():
+        p = _mlp_model_path(model_dir, coin)
+        with open(p, "wb") as f:
+            pickle.dump(model, f)
+    if models:
+        print(f"  Saved {len(models)} MLP model(s) to {model_dir}")
+
+
+def load_mlp_models(coins: list, model_dir: str) -> dict:
+    models = {}
+    for coin in coins:
+        p = _mlp_model_path(model_dir, coin)
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                models[coin] = pickle.load(f)
+    if models:
+        print(f"  Loaded {len(models)} MLP model(s) from {model_dir}: {sorted(models.keys())}")
+    return models
+
+
+def save_ppo_agent(agent: "PPOAgent", coin: str, model_dir: str) -> None:
+    os.makedirs(model_dir, exist_ok=True)
+    p = _ppo_model_path(model_dir, coin)
+    with open(p, "wb") as f:
+        pickle.dump(agent, f)
+    print(f"  Saved PPO agent for {coin} to {p}")
+
+
+def load_ppo_agent(coin: str, model_dir: str):
+    p = _ppo_model_path(model_dir, coin)
+    if not os.path.exists(p):
+        return None
+    with open(p, "rb") as f:
+        agent = pickle.load(f)
+    print(f"  Loaded PPO agent for {coin} from {p}")
+    return agent
+
+
+def build_ppo_test_df(ppo_matrices: dict, coin: str) -> pd.DataFrame:
+    required = PPO_FEATURE_COLS + ["ppo_action"]
+    mat = (ppo_matrices[coin][required].dropna().reset_index(drop=True))
+    split = int(len(mat) * 0.80)
+    return mat.iloc[split:].reset_index(drop=True)
 
 
 # ── Live-style inference (used in run / backtest mode) ───────────────────────
@@ -896,6 +957,7 @@ def main():
 
     # Ensure output directory exists
     os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(args.model_dir, exist_ok=True)
 
     print("=" * 72)
     print("  CRYPTO FUTURES TRADING PIPELINE  (MLP + PPO)")
@@ -904,6 +966,7 @@ def main():
     print(f"  Coins      : {coins}")
     print(f"  Episodes   : {args.episodes:,}")
     print(f"  Output dir : {args.output_dir}")
+    print(f"  Model dir  : {args.model_dir}")
     print("=" * 72)
 
     coin_config, now_ms = _build_coin_config(coins)
@@ -918,17 +981,25 @@ def main():
         raw_dfs            = load_all_candles(coin_config, now_ms)
         mlp_data, ppo_matrices = build_all_features(raw_dfs, coin_config)
         mlp_models, mlp_metrics = train_mlp_models(mlp_data, coin_config)
+        save_mlp_models(mlp_models, args.model_dir)
 
         # PPO trains on first coin in list (default BTC)
         ppo_coin    = coins[0]
         ppo_agent, reward_log, test_df = train_ppo_agent(
             ppo_matrices, coin=ppo_coin, total_timesteps=args.episodes,
         )
+        save_ppo_agent(ppo_agent, ppo_coin, args.model_dir)
 
     # ── RUN MODE: data needed even if skipping training ──────────────────────
     if args.mode == "run" and not mlp_data:
         raw_dfs              = load_all_candles(coin_config, now_ms)
         mlp_data, ppo_matrices = build_all_features(raw_dfs, coin_config)
+        mlp_models = load_mlp_models(coins, args.model_dir)
+
+        ppo_coin = coins[0]
+        ppo_agent = load_ppo_agent(ppo_coin, args.model_dir)
+        if ppo_agent is not None:
+            test_df = build_ppo_test_df(ppo_matrices, ppo_coin)
 
     # ── INFERENCE / BACKTEST ─────────────────────────────────────────────────
     if args.mode in ("run", "both"):
