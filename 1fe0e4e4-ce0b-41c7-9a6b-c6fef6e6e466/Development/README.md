@@ -87,10 +87,192 @@ If these are not set, the block runs without sending (safe to ignore).
 
 ---
 
+## 💻 Standalone `main.py`
+
+`main.py` is a fully self-contained version of this entire pipeline that runs from the command line — no Zerve canvas required. It replicates every stage: data loading, feature engineering, MLP training, PPO training, backtesting, and chart generation.
+
+The file is already written to the canvas filesystem by the `write_main_py` block.
+
+### Prerequisites
+
+Install all dependencies with a single pip command:
+
+```bash
+pip install numpy pandas scikit-learn matplotlib requests
+```
+
+| Package | Version | Purpose |
+|---|---|---|
+| `numpy` | ≥1.24 | PPO agent, feature math |
+| `pandas` | ≥2.0 | DataFrames, feature engineering |
+| `scikit-learn` | ≥1.3 | `MLPClassifier` for signal engine |
+| `matplotlib` | ≥3.7 | Chart generation (PNG output) |
+| `requests` | ≥2.31 | *(optional)* Telegram alerts |
+
+> Python **3.9+** required. No `gymnasium`, `torch`, or `tensorflow` dependencies.
+
+---
+
+### Environment Variables
+
+Set these before running if you want Telegram alerts to fire:
+
+```bash
+# Linux / macOS
+export TELEGRAM_BOT_TOKEN="7123456789:AAFxxx..."
+export TELEGRAM_CHAT_ID="-100123456789"
+
+# Windows (PowerShell)
+$env:TELEGRAM_BOT_TOKEN = "7123456789:AAFxxx..."
+$env:TELEGRAM_CHAT_ID   = "-100123456789"
+```
+
+| Variable | Required | Description |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | Optional | Bot token from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_CHAT_ID` | Optional | Target chat / group / channel ID |
+
+If neither is set, signal generation still runs and writes `signals_log.csv` — alerts are simply skipped.
+
+---
+
+### CLI Usage
+
+#### ⚡ Quick-start (recommended)
+```bash
+python main.py
+```
+Runs the full pipeline — train MLP + PPO on all 8 coins, run inference, backtest, save charts. Equivalent to `--mode both`.
+
+---
+
+#### `--mode train` — Training only
+```bash
+# Train on all coins, 100 000 PPO timesteps (default)
+python main.py --mode train
+
+# Train on a subset of coins
+python main.py --mode train --coins BTC ETH SOL
+
+# Train with more PPO timesteps
+python main.py --mode train --episodes 250000
+
+# Train and save outputs to a custom directory
+python main.py --mode train --coins BTC --episodes 50000 --output-dir ./results/btc_run1
+```
+
+---
+
+#### `--mode run` — Inference & backtest only
+```bash
+# Run inference on all 8 coins (data fetched fresh, no models trained)
+python main.py --mode run
+
+# Run on a subset of coins
+python main.py --mode run --coins BTC ETH
+
+# Custom output directory
+python main.py --mode run --output-dir ./signals
+```
+
+> ⚠️ In `run` mode, no PPO agent is available (it wasn't trained in this session), so PPO backtest and chart generation are skipped. Re-run with `--mode both` to train and evaluate.
+
+---
+
+#### `--mode both` — Full pipeline (train + run)
+```bash
+# Full pipeline, all coins
+python main.py --mode both
+
+# Full pipeline, specific coins, more timesteps, custom output
+python main.py --mode both --coins BTC ETH SOL --episodes 200000 --output-dir ./out
+
+# Meme coins only
+python main.py --mode both --coins NEIRO ZEREBRO --episodes 100000
+```
+
+---
+
+#### All CLI flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--mode` | `both` | Pipeline mode: `train`, `run`, or `both` |
+| `--coins` | all 8 | Space-separated coin list: `BTC ETH SOL BNB XRP DOGE NEIRO ZEREBRO` |
+| `--episodes` | `100000` | Total PPO training timesteps |
+| `--output-dir` | `.` | Directory for output files (created if it doesn't exist) |
+
+---
+
+### Expected Output Files
+
+After a full `--mode both` run, the following files are written to `--output-dir`:
+
+| File | Mode | Description |
+|---|---|---|
+| `signals_log.csv` | `run`, `both` | MLP signal log. Columns: `timestamp`, `coin`, `signal`, `confidence`, `price`. One row per emitted signal. |
+| `ppo_cumulative_return.png` | `both` | Cumulative log-return comparison: PPO agent vs Buy-and-Hold on the 20% BTC test set. |
+| `ppo_training_curve.png` | `both` | PPO training reward curve — trailing 20-episode mean + moving-average trend line. |
+| `ppo_action_distribution.png` | `both` | Pie chart of SELL / HOLD / BUY action distribution on the test set. |
+
+> Files **not generated** in the current mode are reported as `○ (not generated)` in the final summary printed to stdout.
+
+---
+
+### Example Console Output
+
+```
+════════════════════════════════════════════════════════════════════════
+  CRYPTO FUTURES TRADING PIPELINE  (MLP + PPO)
+════════════════════════════════════════════════════════════════════════
+  Mode       : both
+  Coins      : ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'NEIRO', 'ZEREBRO']
+  Episodes   : 100,000
+  Output dir : .
+════════════════════════════════════════════════════════════════════════
+
+[1/7] Loading Binance Futures candles (parallel)…
+  BTC          259,200 rows  2024-09-17 → 2025-03-17
+  ETH          259,200 rows  2024-09-17 → 2025-03-17
+  ...
+
+[2/7] Feature engineering…
+  BTC      MLP rows= 259,195  PPO rows= 259,174
+
+[3/7] Training MLP classifiers…
+  BTC      acc=0.5312  n_iter=30  DOWN_P=0.538  UP_P=0.541
+
+[4/7] Training PPO agent on BTC (100,000 timesteps)…
+     Timestep    MeanEpReward    Episodes
+     ────────────────────────────────────────
+        2,048      +0.000012            1
+       ...
+
+[5/7] MLP inference & signal generation…
+  BTC      signal=UP         conf=72.3%  gate=65%  emit=YES
+
+[6/7] Backtesting PPO agent on BTC test set…
+  Total Return  : +0.001234
+  Sharpe Ratio  : +1.4200
+  Win Rate      : 51.23%
+
+[7/7] Saving charts to .…
+  Saved: ./ppo_cumulative_return.png
+  Saved: ./ppo_training_curve.png
+  Saved: ./ppo_action_distribution.png
+
+════════════════════════════════════════════════════════════════════════
+  ✅  PIPELINE COMPLETE
+════════════════════════════════════════════════════════════════════════
+```
+
+---
+
 ## 📁 File Descriptions
 
 | File | Description |
 |---|---|
+| `main.py` | Standalone CLI script — complete pipeline (MLP + PPO) without Zerve. Written by `write_main_py` block. |
 | `signals_log.csv` | Live signal log written by `live_signal_engine`. Columns: `timestamp`, `coin`, `signal`, `confidence`, `price`, `volatility_warning`, `atr_14`. Reset on each run. Also read by `build_ppo_feature_matrix` to seed PPO features. |
 | `ppo_cumulative_return.png` | Chart comparing PPO agent cumulative log-return vs Buy-and-Hold on the BTC 20% test set. |
 | `ppo_training_curve.png` | PPO training reward curve over 100K timesteps — mean episode reward (trailing 20 eps) with a moving-average trend line. |

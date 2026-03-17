@@ -120,6 +120,24 @@ layers:
   - auto_size: false
     canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
     compute_settings: null
+    description: Writes a complete standalone trading pipeline script (main.py) to
+      canvas filesystem covering MLP + PPO training, inference, and backtesting with
+      chart generation
+    height: 1000
+    id: 66d3ed47-f8ee-4560-b8fc-e3a21fc75c77
+    layer_id: dae8109a-903e-421e-96da-27a4342910ca
+    name: write_main_py
+    parent_id: null
+    properties: {}
+    status: 3
+    type: 1
+    variables: null
+    width: 1600
+    x: 0
+    y: 7400
+  - auto_size: false
+    canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+    compute_settings: null
     description: Fetches 1-minute OHLCV candles for 8 crypto futures (BTC, ETH, SOL,
       BNB, XRP, DOGE, NEIRO, ZEREBRO) from Binance API with coin-specific thresholds
       and training hyperparameters
