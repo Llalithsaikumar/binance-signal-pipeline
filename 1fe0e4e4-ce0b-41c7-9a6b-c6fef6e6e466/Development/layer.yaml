@@ -6,6 +6,41 @@ blocks:
 - auto_size: false
   canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
   compute_settings: null
+  description: "Comprehensive project documentation for PPO crypto trading pipeline\
+    \ with dual branches\u2014MLP signal engine and pure NumPy PPO agent training\
+    \ on BTC perpetual futures"
+  height: 1000
+  id: 03c46562-eb2c-4c6e-a618-2843bb2a4e83
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  name: README
+  parent_id: null
+  properties: {}
+  status: 1
+  type: 4
+  variables: null
+  width: 1600
+  x: 0
+  y: 4400
+- auto_size: false
+  canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  compute_settings: null
+  description: Trains PPO agent on BTC trading data with 100K timesteps; evaluates
+    performance vs buy-and-hold baseline
+  height: 1000
+  id: 072c81e4-776e-4cdf-9640-eefe8661dc30
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  name: ppo_agent_training
+  parent_id: null
+  properties: {}
+  status: 3
+  type: 1
+  variables: null
+  width: 1600
+  x: 14000
+  y: 1400
+- auto_size: false
+  canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  compute_settings: null
   description: Initiates parallel execution across 8 cryptocurrency symbols for distributed
     feature engineering
   height: 1000
@@ -20,6 +55,42 @@ blocks:
   width: 1600
   x: 2000
   y: 0
+- auto_size: false
+  canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  compute_settings: null
+  description: Engineers PPO training matrices with return-based features (log returns,
+    volatility, momentum) and action labels (SELL/HOLD/BUY) for 8 cryptocurrencies
+    plus signals log
+  height: 1000
+  id: 3620c91b-cd4f-4e34-be1b-ebe88dcb4431
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  name: build_ppo_feature_matrix
+  parent_id: null
+  properties: {}
+  status: 3
+  type: 1
+  variables: null
+  width: 1600
+  x: 10000
+  y: 1400
+- auto_size: false
+  canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  compute_settings: null
+  description: Builds Gym-compatible trading environment for 8 crypto pairs using
+    13 technical indicators, discrete actions (SELL/HOLD/BUY), and position-weighted
+    reward calculation with transaction costs
+  height: 1000
+  id: 38566345-4ab2-427b-8d8d-f0b9b6b75100
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  name: trading_gym_env
+  parent_id: null
+  properties: {}
+  status: 3
+  type: 1
+  variables: null
+  width: 1600
+  x: 12000
+  y: 1400
 - auto_size: false
   canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
   compute_settings: null
@@ -153,6 +224,11 @@ edges:
   source: db1f5bf0-18ce-433f-8535-ecb43009d06b
   target: db64893c-a322-4f8b-a342-8df163558395
 - canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  id: 58c2cba0-319f-49e0-8d9a-088045947c2b
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  source: 38566345-4ab2-427b-8d8d-f0b9b6b75100
+  target: 072c81e4-776e-4cdf-9640-eefe8661dc30
+- canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
   id: 6d7acca4-d30e-486b-842b-403c3f14ffe4
   layer_id: dae8109a-903e-421e-96da-27a4342910ca
   source: 387484d9-601e-4590-b3a4-c843952b1354
@@ -173,7 +249,17 @@ edges:
   source: 77351ffa-461a-4d8e-852f-8f8ec9fc4b6f
   target: 3482bd56-c44f-4a8e-89d7-f3db4400e0c1
 - canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  id: c4ce9d81-af21-4f38-8fcf-16795a3cff3e
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  source: db1f5bf0-18ce-433f-8535-ecb43009d06b
+  target: 3620c91b-cd4f-4e34-be1b-ebe88dcb4431
+- canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
   id: e0454ca1-dd73-4398-b3f7-4d87afe5417e
   layer_id: dae8109a-903e-421e-96da-27a4342910ca
   source: db64893c-a322-4f8b-a342-8df163558395
   target: 387484d9-601e-4590-b3a4-c843952b1354
+- canvas_id: 1fe0e4e4-ce0b-41c7-9a6b-c6fef6e6e466
+  id: e1b382d8-3663-46e0-a96d-b6d717bcdebd
+  layer_id: dae8109a-903e-421e-96da-27a4342910ca
+  source: 3620c91b-cd4f-4e34-be1b-ebe88dcb4431
+  target: 38566345-4ab2-427b-8d8d-f0b9b6b75100
